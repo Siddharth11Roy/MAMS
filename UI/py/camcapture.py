@@ -8,6 +8,15 @@ import os
 import pickle
 import time
 import sys
+import face_recognition
+
+if len(sys.argv) > 1:
+    day = sys.argv[1]  # e.g., '2' for Day2
+else:
+    day = '1'  # default to Day1
+
+# Use 'Day' + day as the column name to update
+column_name = 'Day' + day
 
 print("Starting face recognition for attendance...")
 curd = os.getcwd()
@@ -73,27 +82,21 @@ def detect_faces(image):
     return face_locations
 
 # Function to recognize faces
-def recognize_faces(image, model, distance_threshold=0.5):
-    face_locations = detect_faces(image)
-    
+def recognize_faces(frame, model):
+    # Convert BGR (OpenCV) to RGB (face_recognition)
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    face_locations = face_recognition.face_locations(rgb_frame)
     if not face_locations:
         return []
-    
+    face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+    if not face_encodings:
+        return []
+    closest_distances = model.kneighbors(face_encodings, n_neighbors=1)
+    are_matches = [closest_distances[0][i][0] <= 0.5 for i in range(len(face_locations))]
     predictions = []
-    for face_loc in face_locations:
-        features = extract_face_features(image, face_loc)
-        
-        # Get prediction from model
-        closest_distances = model.kneighbors([features], n_neighbors=1)
-        is_match = closest_distances[0][0][0] <= distance_threshold
-        
-        if is_match:
-            person_name = model.predict([features])[0]
-        else:
-            person_name = "unknown"
-        
-        predictions.append((person_name, face_loc))
-    
+    for pred, loc, rec in zip(model.predict(face_encodings), face_locations, are_matches):
+        name = pred if rec else "unknown"
+        predictions.append((name, loc))
     return predictions
 
 # Start headless webcam capture for attendance
@@ -129,7 +132,7 @@ def take_attendance():
         frame_count += 1
         if frame_count % 5 != 0:  # Process every 5th frame
             continue
-            
+
         # Recognize faces
         predictions = recognize_faces(frame, model)
         
@@ -161,13 +164,34 @@ def take_attendance():
         for i in range(len(attendance)):
             if attendance['Count'][i] > 1:
                 attendance['Present'][i] = 1
-        
-        # Save to CSV
+
         attendance_final = attendance.drop(['Count'], axis=1)
-        attendance_final.to_csv(os.path.join(curd, 'Attendance.csv'))
-        
-        print("\nAttendance Summary:")
-        print(attendance)
+        attendance_final.reset_index(inplace=True)
+        attendance_final.rename(columns={'index': 'RegNo'}, inplace=True)
+
+        # --- UPDATE OR APPEND TO CSV ---
+        csv_path = os.path.join(curd, 'Attendance.csv')
+
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            if column_name not in df.columns:
+                df[column_name] = 0
+        else:
+            df = pd.DataFrame(columns=['RegNo', 'Day1', 'Day2', 'Day3'])
+
+        for idx, row in attendance_final.iterrows():
+            regno = row['RegNo']
+            present = row['Present']
+            if regno in df['RegNo'].values:
+                df.at[df.index[df['RegNo'] == regno][0], column_name] = present
+            else:
+                new_row = {'RegNo': regno, 'Day1': 0, 'Day2': 0, 'Day3': 0}
+                new_row[column_name] = present
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
+        df.to_csv(csv_path, index=False)
+        print(f"Attendance updated for {column_name}.")
+        print(df)
         print("\nAttendance saved to Attendance.csv")
     else:
         print("No students detected for attendance.")

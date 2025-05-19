@@ -27,13 +27,14 @@ function foo(){
 }
 function Train(){
 	console.log("JS Train running");
-	document.getElementById('preloader').style.visibility="visible";
+	var preloader = document.getElementById('preloader');
+	if (preloader) preloader.style.visibility = "visible";
 	M.toast({html:'Training has begun, it might take some time. You will be informed when the job is complete.'});
 	var python = require('child_process').spawn('python', ['py/train.py']);
     python.stdout.on('data',function(data){
 		console.log("data: ",data.toString('utf8')+ " from Python ");
 		M.toast({html:'Please upload the file found in /assests/models directory.'});
-		document.getElementById('preloader').style.visibility='hidden';	
+		if (preloader) preloader.style.visibility = 'hidden';	
 		document.getElementById('trainfield').style.backgroundColor='red';
     });
 }
@@ -99,30 +100,45 @@ function uploadFile(){
 };
 
 function writeUserData() {
-	
-	var studregno = document.getElementById('studentregno').value;
-	var studname = document.getElementById('studentname').value;
-	if(studregno.length>2 && studname.length>2){
-		firebase.database().ref('Students/' + studregno).set({
-			RegNo: studregno,
-			name: studname,
-			hours_conducted: 0,
-			hours_present:0,
-			dayorder:{
-				DO1:0,
-				DO2:0,
-				DO3:0,
-			},
-		
-		});
-		console.log("All Data Sent Successfully");
-		M.toast({html:'Data has been uploaded to the server! You can continue adding more'});
-	}
-	else{
-		console.log("Incorrect data detected, warning user");
-		M.toast({html:'All fields are mandatory'});
-	}
-	
+    var studregno = document.getElementById('studentregno').value;
+    var studname = document.getElementById('studentname').value;
+    if(studregno.length>2 && studname.length>2){
+        firebase.database().ref('Students/' + studregno).set({
+            RegNo: studregno,
+            name: studname,
+            hours_conducted: 0,
+            hours_present:0,
+            dayorder:{
+                DO1:0,
+                DO2:0,
+                DO3:0,
+            },
+        });
+        // --- Append to students.csv if not already present ---
+        const studentsPath = require('path').join(__dirname, 'students.csv');
+        const fs = require('fs');
+        // Read current students.csv to avoid duplicates
+        fs.readFile(studentsPath, 'utf8', (err, data) => {
+            let alreadyExists = false;
+            if (!err && data) {
+                alreadyExists = data.split('\n').some(line => line.startsWith(studregno + ','));
+            }
+            if (!alreadyExists) {
+                // If file is empty, add header
+                if (!err && data.trim().length === 0) {
+                    fs.appendFileSync(studentsPath, 'RegNo,Name\n');
+                }
+                fs.appendFileSync(studentsPath, `${studregno},${studname}\n`);
+            }
+        });
+        // ---
+        console.log("All Data Sent Successfully");
+        M.toast({html:'Data has been uploaded to the server! You can continue adding more'});
+    }
+    else{
+        console.log("Incorrect data detected, warning user");
+        M.toast({html:'All fields are mandatory'});
+    }
 }
 
 $("#file").on("change",function(event){

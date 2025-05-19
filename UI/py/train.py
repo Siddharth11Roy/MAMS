@@ -11,6 +11,7 @@ import os.path
 import pickle
 import sys
 from PIL import Image
+import face_recognition
 
 print("Starting training process...")
 curd = os.getcwd()
@@ -154,19 +155,24 @@ def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree
         # Loop through each training image for the current person
         for img_path in get_image_files(class_dir_path):
             try:
-                face_locations = detect_face_opencv(img_path)
+                # Use face_recognition for face detection and encoding
+                image = face_recognition.load_image_file(img_path)
+                face_locations = face_recognition.face_locations(image)
 
                 if len(face_locations) != 1:
                     if verbose:
                         print(f"Image {img_path} not suitable for training: {'No face detected' if len(face_locations) < 1 else 'Multiple faces detected'}")
-                        continue
+                    continue
                 else:
                     # Extract features from the face
-                    features = extract_face_features(img_path, face_locations[0])
-                    if features is not None:
-                        X.append(features)
+                    face_encodings = face_recognition.face_encodings(image, face_locations)
+                    if len(face_encodings) == 1:
+                        X.append(face_encodings[0])
                         y.append(class_dir)
                         usable_image_count += 1
+                    else:
+                        if verbose:
+                            print(f"Image {img_path} not suitable for training: Face encoding failed")
             except Exception as e:
                 print(f"Error processing image {img_path}: {e}")
         
@@ -206,15 +212,16 @@ def train(train_dir, model_save_path=None, n_neighbors=None, knn_algo='ball_tree
 # Main training function
 if __name__ == "__main__":
     # Define paths
-    data_dir = os.path.join(curd, "assets", "data")
-    model_path = os.path.join(curd, "assets", "models", "trained_knn_model.clf")
+    curd = os.path.dirname(os.path.abspath(__file__))
+    train_dir = os.path.join(curd, "..", "assets", "data")  # Use assets/data relative to project root
+    model_path = os.path.join(curd, "..", "assets", "models", "trained_knn_model.clf")
     
-    print(f"Training KNN classifier using data from: {data_dir}")
+    print(f"Training KNN classifier using data from: {train_dir}")
     print(f"Model will be saved to: {model_path}")
     
     try:
         # Train the classifier
-        classifier = train(data_dir, model_save_path=model_path, n_neighbors=2)
+        classifier = train(train_dir, model_save_path=model_path, n_neighbors=2)
         print(f"Training complete! Model saved to {model_path}")
     except Exception as e:
         print(f"Error during training: {e}")

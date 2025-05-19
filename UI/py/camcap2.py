@@ -15,7 +15,7 @@ import face_recognition
 import sys
 
 # --- CONFIG ---
-curd = os.getcwd()
+curd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(curd, "assets", "models", "trained_knn_model.clf")
 ATTENDANCE_CSV = os.path.join(curd, "UI", "Attendance.csv")
 TEST_IMAGES_DIR = os.path.join(curd, "assets", "test")
@@ -30,7 +30,11 @@ import shutil
 os.makedirs(TEST_IMAGES_DIR, exist_ok=True)
 os.makedirs(HISTORY_DIR, exist_ok=True)
 for i in os.listdir(TEST_IMAGES_DIR):
-    shutil.move(os.path.join(TEST_IMAGES_DIR, i), HISTORY_DIR)
+    src = os.path.join(TEST_IMAGES_DIR, i)
+    dst = os.path.join(HISTORY_DIR, i)
+    if os.path.exists(dst):
+        os.remove(dst)  # Remove the existing file
+    shutil.move(src, HISTORY_DIR)
 
 # --- CAPTURE IMAGES ---
 cap = cv2.VideoCapture(0)
@@ -116,7 +120,7 @@ for idx, row in attendance_final.iterrows():
     regno = row['RegNo']
     present = row['Present']
     if regno in df['RegNo'].values:
-        df.loc[df['RegNo'] == regno, DAY] = present
+        df.at[df.index[df['RegNo'] == regno][0], DAY] = present
     else:
         new_row = {'RegNo': regno, 'Day1': 0, 'Day2': 0, 'Day3': 0}
         new_row[DAY] = present
